@@ -43,6 +43,7 @@ data/embeddings/*.npy
 
 # Environment
 .env
+.venv/
 .DS_Store
 Thumbs.db
 __pycache__/
