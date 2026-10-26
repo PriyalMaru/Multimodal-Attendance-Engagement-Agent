@@ -13,17 +13,25 @@ from app.services.student_service import StudentService
 from app.services.session_service import SessionService
 from app.services.attendance_service import AttendanceService
 from app.services.suggestion_service import SuggestionService
-from app.vision.pipeline import MultimodalPipeline
 from app.models.db_models import Session
 
 router = APIRouter()
-pipeline = MultimodalPipeline()
+pipeline = None
 suggestion_service = SuggestionService()
+
+def get_pipeline():
+    """Load the CPU/GPU video pipeline only when video processing is requested."""
+    global pipeline
+    if pipeline is None:
+        from app.vision.pipeline import MultimodalPipeline
+        pipeline = MultimodalPipeline()
+    return pipeline
 
 # In-memory job tracker for video upload background processing
 ACTIVE_JOBS: Dict[str, Dict] = {}
 
 async def run_video_processing_task(job_id: str, session_id: int, video_path: str):
+    processing_pipeline = get_pipeline()
     ACTIVE_JOBS[job_id]["status"] = "PROCESSING"
     ACTIVE_JOBS[job_id]["progress"] = 0.05
     ACTIVE_JOBS[job_id]["message"] = "Loading face models and enrolled student profiles..."
@@ -45,7 +53,7 @@ async def run_video_processing_task(job_id: str, session_id: int, video_path: st
                 return ACTIVE_JOBS.get(job_id, {}).get("cancelled", False)
 
             ACTIVE_JOBS[job_id]["message"] = "Processing video frames..."
-            result = await pipeline.process_video_file(
+            result = await processing_pipeline.process_video_file(
                 db=db,
                 session_id=session_id,
                 video_filepath=video_path,
@@ -165,9 +173,11 @@ async def process_live_frame(
     enrolled = await StudentService.load_all_consented_embeddings(db, course_name=target_class)
     enrolled_cache = [(s.id, s.full_name, emb) for s, emb in enrolled]
 
+    processing_pipeline = get_pipeline()
+
     # Detect
-    detections = pipeline.detector.detect(frame)
-    tracks = pipeline.tracker.update(detections)
+    detections = processing_pipeline.detector.detect(frame)
+    tracks = processing_pipeline.tracker.update(detections)
 
     recognized_names = []
     forward_count = 0
@@ -176,16 +186,16 @@ async def process_live_frame(
         x1, y1, x2, y2 = track.bbox
         crop = frame[y1:y2, x1:x2]
         if crop.size > 0:
-            face_crop = pipeline.face_recognizer.detect_face(crop)
+            face_crop = processing_pipeline.face_recognizer.detect_face(crop)
             if face_crop is not None:
-                is_fwd, yaw, pitch, roll = pipeline.head_pose.estimate_orientation(face_crop)
+                is_fwd, yaw, pitch, roll = processing_pipeline.head_pose.estimate_orientation(face_crop)
                 if is_fwd:
                     forward_count += 1
                 
                 if track.matched_student_id is None and enrolled_cache:
-                    emb = pipeline.face_recognizer.extract_embedding(face_crop)
+                    emb = processing_pipeline.face_recognizer.extract_embedding(face_crop)
                     if emb is not None:
-                        s_id, s_name, score = pipeline.face_recognizer.match_face(emb, enrolled_cache)
+                        s_id, s_name, score = processing_pipeline.face_recognizer.match_face(emb, enrolled_cache)
                         if s_id is not None:
                             track.matched_student_id = s_id
                             track.matched_student_name = s_name

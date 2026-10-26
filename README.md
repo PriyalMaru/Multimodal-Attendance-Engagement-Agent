@@ -60,6 +60,26 @@ An offline-first, privacy-preserving classroom intelligence application that com
 
 ## 4. Setup & Running Instructions
 
+### Streamlit demo deployment (recommended)
+
+The root [`streamlit_app.py`](streamlit_app.py) is a single-process deployment
+entrypoint. It preserves the dashboard, student/consent, session, attendance,
+video-analysis, analytics, and teaching-suggestion workflows while calling the
+existing Python services directly. No separate FastAPI or React server is
+required for this mode.
+
+```bash
+# From the repository root
+python -m pip install -r requirements.txt
+python -m streamlit run streamlit_app.py
+```
+
+For Streamlit Community Cloud, select `streamlit_app.py` as the entrypoint and
+Python 3.11. The local SQLite database, temporary uploads, and embeddings are
+ephemeral: they can be reset whenever the hosted container restarts. Computer
+vision models are lazy-loaded only when face enrollment or video analysis is
+requested.
+
 ### Prerequisites
 - Python 3.11+ (verified compatible on Python 3.13)
 - Node.js v18+ & npm

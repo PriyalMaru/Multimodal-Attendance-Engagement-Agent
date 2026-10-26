@@ -13,7 +13,14 @@ from app.services.student_service import StudentService
 from app.vision.face_recognizer import LocalFaceRecognizer
 
 router = APIRouter()
-face_engine = LocalFaceRecognizer()
+face_engine = None
+
+def get_face_engine() -> LocalFaceRecognizer:
+    """Load FaceNet only when a face enrollment request needs it."""
+    global face_engine
+    if face_engine is None:
+        face_engine = LocalFaceRecognizer()
+    return face_engine
 
 @router.get("", response_model=List[StudentResponse])
 async def list_students(include_archived: bool = False, db: AsyncSession = Depends(get_db)):
@@ -80,12 +87,13 @@ async def enroll_face(
         raise HTTPException(status_code=400, detail="Invalid image file format.")
 
     # Detect face
-    face_crop = face_engine.detect_face(img)
+    engine = get_face_engine()
+    face_crop = engine.detect_face(img)
     if face_crop is None:
         raise HTTPException(status_code=400, detail="No clear face detected in the uploaded image. Please provide a clear, well-lit frontal face image.")
 
     # Extract embedding
-    embedding = face_engine.extract_embedding(face_crop)
+    embedding = engine.extract_embedding(face_crop)
     if embedding is None:
         raise HTTPException(status_code=500, detail="Facial embedding extraction failed. Check local FaceNet model.")
 
